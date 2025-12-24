@@ -1,12 +1,13 @@
+require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const mongoose = require('mongoose');
 
 // --- تنظیمات اصلی ---
 // ۱. توکن ربات خود را اینجا بگذارید
-const BOT_TOKEN = '8250844010:AAGw2m6N8dDvRKkS1jUz1M5Wh_Y6PEBsjLA'; 
+const BOT_TOKEN = process.env.BOT_TOKEN; 
 
 // ۲. لینک مونو دی‌بی (همان که از اطلس گرفتید و پسورد را در آن گذاشتید)
-const MONGO_URI = 'mongodb+srv://gharib206_db_user:NMx6iXcW1nKpMVpV@cluster0.fq5yh4f.mongodb.net/?appName=Cluster0';
+const MONGO_URI = process.env.MONGO_URI;
 
 // ۳. لینک گیتهاب مینی‌اپ خودتان
 const WEB_APP_URL = 'https://gharib206.github.io/cinemaqquizbot/';
@@ -101,4 +102,5 @@ bot.launch().then(() => console.log("🚀 ربات آنلاین است!"));
 
 // خروج ایمن
 process.once('SIGINT', () => bot.stop('SIGINT'));
+
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
