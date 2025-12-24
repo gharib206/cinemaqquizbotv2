@@ -1,16 +1,17 @@
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const mongoose = require('mongoose');
+const http = require('http');
 
 // --- تنظیمات اصلی ---
-// ۱. توکن ربات خود را اینجا بگذارید
 const BOT_TOKEN = process.env.BOT_TOKEN; 
-
-// ۲. لینک مونو دی‌بی (همان که از اطلس گرفتید و پسورد را در آن گذاشتید)
 const MONGO_URI = process.env.MONGO_URI;
-
-// ۳. لینک گیتهاب مینی‌اپ خودتان
 const WEB_APP_URL = 'https://gharib206.github.io/cinemaqquizbot/';
+
+if (!BOT_TOKEN) {
+    console.error("❌ خطا: BOT_TOKEN در متغیرهای محیطی تعریف نشده است!");
+    process.exit(1);
+}
 
 const bot = new Telegraf(BOT_TOKEN);
 
@@ -22,9 +23,9 @@ const userResultSchema = new mongoose.Schema({
     date: { type: Date, default: Date.now }
 });
 
-const UserResult = mongoose.model('UserResult', userResultSchema);
+const UserResult = mongoose.models.UserResult || mongoose.model('UserResult', userResultSchema);
 
-// --- اتصال به دیتابیس ---
+// --- اتصال به دیتابیس با مدیریت خطا ---
 mongoose.connect(MONGO_URI)
     .then(() => console.log('✅ اتصال موفق به MongoDB برقرار شد.'))
     .catch(err => console.error('❌ خطا در اتصال به دیتابیس:', err));
@@ -33,7 +34,8 @@ mongoose.connect(MONGO_URI)
 
 // ۱. شروع و منوی اصلی
 bot.start((ctx) => {
-    ctx.reply(`سلام ${ctx.from.first_name}! به مسابقه خوش آمدی 🎬`, {
+    const name = ctx.from.first_name || "دوست من";
+    ctx.reply(`سلام ${name}! به چالش بزرگ سینما خوش آمدی 🎬\n\nبرای شروع بازی روی دکمه زیر کلیک کن:`, {
         reply_markup: {
             keyboard: [
                 [{ text: "🎬 شروع مسابقه سینمایی", web_app: { url: WEB_APP_URL } }],
@@ -44,71 +46,63 @@ bot.start((ctx) => {
     });
 });
 
-// ۲. دریافت داده از مینی‌اپ و ذخیره
+// ۲. دریافت داده از مینی‌اپ
 bot.on('web_app_data', async (ctx) => {
     try {
-        // روش قطعی: استخراج داده از بدنه اصلی پیام تلگرام
-        // ما مستقیماً به فیلد داده در پیام خام دسترسی پیدا می‌کنیم
         const resultText = ctx.message.web_app_data.data;
-
-        console.log("--- گزارش دقیق ---");
-        console.log("داده واقعی استخراج شد:", resultText);
-
+        
         const newRecord = new UserResult({
             userId: ctx.from.id,
             firstName: ctx.from.first_name,
-            scoreResult: resultText // اینجا دیگر قطعا رشته است (مثل: "امتیاز: 10")
+            scoreResult: resultText
         });
 
         await newRecord.save();
-        await ctx.reply(`🏆 ثبت شد: ${resultText}`);
+        await ctx.reply(`✨ عالی بود ${ctx.from.first_name}!\nنتیجه تو با موفقیت ثبت شد:\n✅ ${resultText}`);
 
     } catch (error) {
-        console.log("خطا:", error.message);
-        ctx.reply('خطا در پردازش داده.');
+        console.error("خطا در ذخیره داده:", error);
+        ctx.reply('❌ متأسفانه در ثبت امتیاز مشکلی پیش آمد.');
     }
 });
 
-// ۳. نمایش جدول رده‌بندی (Leaderboard)
-// اصلاح بخش دکمه مشاهده جدول رده‌بندی
+// ۳. نمایش جدول رده‌بندی
 bot.hears("🏆 مشاهده جدول رده‌بندی", async (ctx) => {
     try {
-        // ۱. دریافت ۵ امتیاز آخر از دیتابیس
         const topScores = await UserResult.find()
-            .sort({ date: -1 }) // مرتب‌سازی بر اساس تازه‌ترین‌ها
-            .limit(5);
+            .sort({ date: -1 })
+            .limit(10);
 
         if (topScores.length === 0) {
-            return ctx.reply("هنوز امتیازی در سیستم ثبت نشده است! 🏆");
+            return ctx.reply("هنوز هیچ امتیازی ثبت نشده! اولین نفر باش که بازی می‌کنه. 🏆");
         }
 
-        // ۲. ساخت پیام متنی
-        let message = "🏆 **لیست آخرین امتیازات ثبت شده:**\n\n";
+        let message = "🏆 **آخرین نتایج ثبت شده:**\n\n";
         topScores.forEach((user, index) => {
             message += `${index + 1}. ${user.firstName || 'کاربر'} ➔ ${user.scoreResult}\n`;
         });
 
-        // ۳. ارسال پاسخ به کاربر
         await ctx.reply(message, { parse_mode: 'Markdown' });
-
     } catch (error) {
-        console.error("خطا در نمایش جدول:", error);
-        ctx.reply("متأسفانه مشکلی در بارگذاری جدول پیش آمد.");
+        ctx.reply("❌ خطا در خواندن اطلاعات از دیتابیس.");
     }
 });
 
-// روشن کردن ربات
-bot.launch().then(() => console.log("🚀 ربات آنلاین است!"));
+// --- راه‌اندازی نهایی ---
 
-// خروج ایمن
-process.once('SIGINT', () => bot.stop('SIGINT'));
+// پاک کردن وب‌هوک‌های قدیمی (بسیار مهم برای حل مشکل عدم پاسخگویی)
+bot.telegram.deleteWebhook().then(() => {
+    console.log("🧹 وب‌هوک‌های قدیمی پاک شدند.");
+    bot.launch().then(() => console.log("🚀 ربات با موفقیت آنلاین شد!"));
+});
 
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-// اضافه کردن برای سازگاری با Koyeb
-const http = require('http');
+// ساخت سرور برای زنده نگه داشتن در Koyeb
 http.createServer((req, res) => {
-    res.write('Bot is Online!');
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.write('Bot is Online and Healthy!');
     res.end();
 }).listen(process.env.PORT || 8080);
 
+// خروج ایمن
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
