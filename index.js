@@ -104,3 +104,11 @@ bot.launch().then(() => console.log("🚀 ربات آنلاین است!"));
 process.once('SIGINT', () => bot.stop('SIGINT'));
 
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+// اضافه کردن برای سازگاری با Koyeb
+const http = require('http');
+http.createServer((req, res) => {
+    res.write('Bot is Online!');
+    res.end();
+}).listen(process.env.PORT || 8080);
+
