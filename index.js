@@ -29,20 +29,21 @@ mongoose.connect(MONGO_URI)
 const userResultSchema = new mongoose.Schema({
     userId: Number,
     firstName: String,
-    scoreResult: String, // داده خام دریافتی (مثلاً "امتیاز: 15")
+    scoreResult: String, // داده خام مثل "امتیاز: 15"
     date: { type: Date, default: Date.now }
 });
 const UserResult = mongoose.models.UserResult || mongoose.model('UserResult', userResultSchema);
 
-// --- تابع کمکی برای استخراج عدد از رشته امتیاز ---
+// --- تابع کمکی برای استخراج عدد از رشته امتیاز (بهینه شده) ---
 const extractScore = (str) => {
     if (!str) return 0;
-    return parseInt(str.replace(/[^0-9]/g, '')) || 0;
+    const match = str.match(/\d+/); // پیدا کردن اولین عدد در رشته
+    return match ? parseInt(match[0]) : 0;
 };
 
 // --- بخش API و Health-check (سرور وب) ---
 const server = http.createServer(async (req, res) => {
-    // حل مشکل CORS برای اینکه مینی‌اپ بتواند اطلاعات را از سرور بگیرد
+    // حل مشکل CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -53,23 +54,24 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // آدرس جدید برای دریافت لیست برترین‌ها در مینی‌اپ
-    if (req.url === '/api/leaderboard') {
+    // مسیر API برای دریافت لیست برترین‌ها در مینی‌اپ
+    if (req.url.startsWith('/api/leaderboard')) {
         try {
             if (!dbConnected) throw new Error("Database not connected");
             
             const allResults = await UserResult.find();
             const sorted = allResults
                 .map(u => ({
-                    name: u.firstName || 'کاربر',
+                    name: u.firstName || 'کاربر ناشناس',
                     score: extractScore(u.scoreResult)
                 }))
-                .sort((a, b) => b.score - a.score) // رتبه‌بندی واقعی از بیشترین به کمترین
-                .slice(0, 10);
+                .sort((a, b) => b.score - a.score) // مرتب‌سازی نزولی
+                .slice(0, 10); // ۱۰ نفر اول
 
             res.writeHead(200, {'Content-Type': 'application/json'});
             res.end(JSON.stringify(sorted));
         } catch (e) {
+            console.error("API Error:", e.message);
             res.writeHead(500);
             res.end(JSON.stringify({ error: "Internal Server Error" }));
         }
@@ -77,7 +79,6 @@ const server = http.createServer(async (req, res) => {
     }
 
     // پاسخ برای UptimeRobot و Koyeb Health Check
-    console.log("🔔 Ping received at: " + new Date().toLocaleString('fa-IR'));
     res.writeHead(200, {'Content-Type': 'text/plain; charset=utf-8'});
     res.write('Bot & API are Online! ✅');
     res.end();
@@ -85,13 +86,13 @@ const server = http.createServer(async (req, res) => {
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
-    console.log(`🌐 Web Server (API + Health-check) running on port ${PORT}`);
+    console.log(`🌐 Web Server running on port ${PORT}`);
 });
 
 // --- دستورات ربات تلگرام ---
 
 bot.start((ctx) => {
-    ctx.reply(`سلام ${ctx.from.first_name}! 🎬\nآماده‌ای اطلاعات سینمایی‌ت رو به چالش بکشی؟\n\nروی دکمه زیر بزن و از منوی بازی انتخاب کن:`, {
+    ctx.reply(`سلام ${ctx.from.first_name}! 🎬\nآماده‌ای رکورد خودت رو ثبت کنی؟\n\nروی دکمه زیر بزن و وارد مسابقه شو:`, {
         reply_markup: {
             keyboard: [
                 [{ text: "🎮 ورود به دنیای مسابقه", web_app: { url: WEB_APP_URL } }],
@@ -106,29 +107,25 @@ bot.start((ctx) => {
 bot.on('web_app_data', async (ctx) => {
     try {
         const resultText = ctx.message.web_app_data.data;
-        const newScore = extractScore(resultText); // استخراج عدد امتیاز
+        const newScore = extractScore(resultText);
         const userId = ctx.from.id;
 
         if (dbConnected) {
-            // جستجوی امتیاز قبلی کاربر در دیتابیس
             const existingRecord = await UserResult.findOne({ userId: userId });
 
             if (existingRecord) {
                 const oldScore = extractScore(existingRecord.scoreResult);
                 
                 if (newScore > oldScore) {
-                    // اگر امتیاز جدید بهتر بود، بروزرسانی کن
                     existingRecord.scoreResult = resultText;
                     existingRecord.firstName = ctx.from.first_name;
                     existingRecord.date = Date.now();
                     await existingRecord.save();
-                    await ctx.reply(`🎊 تبریک! رکورد جدیدی ثبت کردی:\n✅ ${resultText}`);
+                    await ctx.reply(`🎊 تبریک ${ctx.from.first_name}! رکورد جدیدی ثبت کردی:\n✅ ${resultText}`);
                 } else {
-                    // اگر امتیاز جدید کمتر یا مساوی بود
-                    await ctx.reply(`خسته نباشی ${ctx.from.first_name}! امتیازت: ${newScore}\nرکورد قبلی تو (${oldScore}) همچنان بهتر است. 💪`);
+                    await ctx.reply(`خسته نباشی! امتیاز این دور تو: ${newScore}\nرکورد قبلی تو (${oldScore}) همچنان بهتر است. 💪`);
                 }
             } else {
-                // اگر اولین بار است که بازی می‌کند، رکورد جدید بساز
                 const newRecord = new UserResult({
                     userId: userId,
                     firstName: ctx.from.first_name,
@@ -144,7 +141,6 @@ bot.on('web_app_data', async (ctx) => {
     }
 });
 
-// جدول رده‌بندی شیک برای داخل تلگرام (نسخه بک‌آپ)
 bot.hears("🏆 مشاهده رتبه‌بندی (در تلگرام)", async (ctx) => {
     try {
         const all = await UserResult.find();
@@ -166,13 +162,12 @@ bot.hears("🏆 مشاهده رتبه‌بندی (در تلگرام)", async (ct
     }
 });
 
-// آمار مدیریت
 bot.command('stats', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
     try {
         const total = await UserResult.countDocuments();
         const users = await UserResult.distinct('userId');
-        ctx.reply(`📊 آمار:\n👥 کاربران: ${users.length}\n🎮 کل بازی‌ها: ${total}`);
+        ctx.reply(`📊 آمار مدیریت:\n👥 تعداد کل بازیکنان: ${users.length}\n🎮 کل دفعات بازی: ${total}`);
     } catch (e) { console.error(e); }
 });
 
@@ -183,4 +178,3 @@ bot.telegram.deleteWebhook().then(() => {
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
