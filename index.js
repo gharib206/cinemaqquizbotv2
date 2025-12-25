@@ -96,13 +96,19 @@ bot.telegram.deleteWebhook().then(() => {
     bot.launch().then(() => console.log("🚀 ربات با موفقیت آنلاین شد!"));
 });
 
-// ساخت سرور برای زنده نگه داشتن در Koyeb
+// ایجاد سرور برای پاسخ به Health Check های Koyeb و UptimeRobot
+const http = require('http');
+
 http.createServer((req, res) => {
+    console.log("Ping received at: " + new Date().toISOString());
     res.writeHead(200, {'Content-Type': 'text/plain'});
     res.write('Bot is Online and Healthy!');
     res.end();
-}).listen(process.env.PORT || 8080);
+}).listen(process.env.PORT || 8080, () => {
+    console.log("🌐 Health-check server is running on port 8080");
+});
 
 // خروج ایمن
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
