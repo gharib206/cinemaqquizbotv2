@@ -96,19 +96,27 @@ bot.telegram.deleteWebhook().then(() => {
     bot.launch().then(() => console.log("🚀 ربات با موفقیت آنلاین شد!"));
 });
 
-// ایجاد سرور برای پاسخ به Health Check های Koyeb و UptimeRobot
+// --- بخش نهایی برای زنده نگه داشتن ربات در Koyeb و اتصال به UptimeRobot ---
 const http = require('http');
 
 http.createServer((req, res) => {
-    console.log("Ping received at: " + new Date().toISOString());
-    res.writeHead(200, {'Content-Type': 'text/plain'});
-    res.write('Bot is Online and Healthy!');
+    // چاپ زمان دقیق پینگ در لاگ‌های Koyeb برای اطمینان شما
+    console.log("🔔 ضربان قلب دریافت شد در: " + new Date().toLocaleString('fa-IR'));
+    
+    res.writeHead(200, {'Content-Type': 'text/plain; charset=utf-8'});
+    res.write('ربات سینمایی با موفقیت در حال اجراست! ✅');
     res.end();
 }).listen(process.env.PORT || 8080, () => {
-    console.log("🌐 Health-check server is running on port 8080");
+    console.log("🌐 سرور بیدارباش (Health-check) روی پورت 8080 فعال شد.");
+});
+
+// اجرای نهایی ربات
+bot.launch().then(() => {
+    console.log("🚀 مأموریت با موفقیت آغاز شد: ربات در تلگرام آنلاین است.");
 });
 
 // خروج ایمن
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
 
