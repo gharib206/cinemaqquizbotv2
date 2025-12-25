@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const mongoose = require('mongoose');
-const http = require('http');
+const http = require('http'); // تعریف یک‌باره برای کل فایل
 
 // --- تنظیمات اصلی ---
 const BOT_TOKEN = process.env.BOT_TOKEN; 
@@ -25,14 +25,13 @@ const userResultSchema = new mongoose.Schema({
 
 const UserResult = mongoose.models.UserResult || mongoose.model('UserResult', userResultSchema);
 
-// --- اتصال به دیتابیس با مدیریت خطا ---
+// --- اتصال به دیتابیس ---
 mongoose.connect(MONGO_URI)
     .then(() => console.log('✅ اتصال موفق به MongoDB برقرار شد.'))
     .catch(err => console.error('❌ خطا در اتصال به دیتابیس:', err));
 
 // --- دستورات ربات ---
 
-// ۱. شروع و منوی اصلی
 bot.start((ctx) => {
     const name = ctx.from.first_name || "دوست من";
     ctx.reply(`سلام ${name}! به چالش بزرگ سینما خوش آمدی 🎬\n\nبرای شروع بازی روی دکمه زیر کلیک کن:`, {
@@ -46,77 +45,58 @@ bot.start((ctx) => {
     });
 });
 
-// ۲. دریافت داده از مینی‌اپ
 bot.on('web_app_data', async (ctx) => {
     try {
         const resultText = ctx.message.web_app_data.data;
-        
         const newRecord = new UserResult({
             userId: ctx.from.id,
             firstName: ctx.from.first_name,
             scoreResult: resultText
         });
-
         await newRecord.save();
         await ctx.reply(`✨ عالی بود ${ctx.from.first_name}!\nنتیجه تو با موفقیت ثبت شد:\n✅ ${resultText}`);
-
     } catch (error) {
         console.error("خطا در ذخیره داده:", error);
         ctx.reply('❌ متأسفانه در ثبت امتیاز مشکلی پیش آمد.');
     }
 });
 
-// ۳. نمایش جدول رده‌بندی
 bot.hears("🏆 مشاهده جدول رده‌بندی", async (ctx) => {
     try {
-        const topScores = await UserResult.find()
-            .sort({ date: -1 })
-            .limit(10);
-
+        const topScores = await UserResult.find().sort({ date: -1 }).limit(10);
         if (topScores.length === 0) {
-            return ctx.reply("هنوز هیچ امتیازی ثبت نشده! اولین نفر باش که بازی می‌کنه. 🏆");
+            return ctx.reply("هنوز هیچ امتیازی ثبت نشده! 🏆");
         }
-
         let message = "🏆 **آخرین نتایج ثبت شده:**\n\n";
         topScores.forEach((user, index) => {
             message += `${index + 1}. ${user.firstName || 'کاربر'} ➔ ${user.scoreResult}\n`;
         });
-
         await ctx.reply(message, { parse_mode: 'Markdown' });
     } catch (error) {
         ctx.reply("❌ خطا در خواندن اطلاعات از دیتابیس.");
     }
 });
 
-// --- راه‌اندازی نهایی ---
+// --- مدیریت زنده ماندن و راه‌اندازی (فقط یک‌بار) ---
 
-// پاک کردن وب‌هوک‌های قدیمی (بسیار مهم برای حل مشکل عدم پاسخگویی)
-bot.telegram.deleteWebhook().then(() => {
-    console.log("🧹 وب‌هوک‌های قدیمی پاک شدند.");
-    bot.launch().then(() => console.log("🚀 ربات با موفقیت آنلاین شد!"));
-});
-
-// --- بخش نهایی برای زنده نگه داشتن ربات در Koyeb و اتصال به UptimeRobot ---
-const http = require('http');
-
+// ۱. ساخت سرور Health-check برای بیدار نگه داشتن (بدون تعریف مجدد http)
 http.createServer((req, res) => {
-    // چاپ زمان دقیق پینگ در لاگ‌های Koyeb برای اطمینان شما
-    console.log("🔔 ضربان قلب دریافت شد در: " + new Date().toLocaleString('fa-IR'));
-    
+    console.log("🔔 پینگ دریافت شد در: " + new Date().toLocaleString('fa-IR'));
     res.writeHead(200, {'Content-Type': 'text/plain; charset=utf-8'});
-    res.write('ربات سینمایی با موفقیت در حال اجراست! ✅');
+    res.write('ربات سینمایی فعال است ✅');
     res.end();
 }).listen(process.env.PORT || 8080, () => {
-    console.log("🌐 سرور بیدارباش (Health-check) روی پورت 8080 فعال شد.");
+    console.log("🌐 سرور بیدارباش روی پورت 8080 فعال شد.");
 });
 
-// اجرای نهایی ربات
-bot.launch().then(() => {
-    console.log("🚀 مأموریت با موفقیت آغاز شد: ربات در تلگرام آنلاین است.");
+// ۲. پاکسازی وب‌هوک و اجرای نهایی ربات (فقط یک‌بار در انتهای فایل)
+bot.telegram.deleteWebhook().then(() => {
+    console.log("🧹 وب‌هوک‌های قدیمی پاک شدند.");
+    bot.launch().then(() => {
+        console.log("🚀 ربات با موفقیت آنلاین شد و در حال گوش دادن به پیام‌هاست...");
+    });
 });
 
 // خروج ایمن
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-
