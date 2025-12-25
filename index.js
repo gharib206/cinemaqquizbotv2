@@ -102,21 +102,45 @@ bot.start((ctx) => {
     });
 });
 
-// دریافت و ذخیره امتیاز از مینی‌اپ
+// دریافت داده از مینی‌اپ و مدیریت بالاترین امتیاز (High Score)
 bot.on('web_app_data', async (ctx) => {
     try {
-        const data = ctx.message.web_app_data.data;
+        const resultText = ctx.message.web_app_data.data;
+        const newScore = extractScore(resultText); // استخراج عدد امتیاز
+        const userId = ctx.from.id;
+
         if (dbConnected) {
-            const newRes = new UserResult({
-                userId: ctx.from.id,
-                firstName: ctx.from.first_name,
-                scoreResult: data
-            });
-            await newRes.save();
-            await ctx.reply(`✅ امتیاز شما ثبت شد: ${data}\nممنون که بازی کردی!`);
+            // جستجوی امتیاز قبلی کاربر در دیتابیس
+            const existingRecord = await UserResult.findOne({ userId: userId });
+
+            if (existingRecord) {
+                const oldScore = extractScore(existingRecord.scoreResult);
+                
+                if (newScore > oldScore) {
+                    // اگر امتیاز جدید بهتر بود، بروزرسانی کن
+                    existingRecord.scoreResult = resultText;
+                    existingRecord.firstName = ctx.from.first_name;
+                    existingRecord.date = Date.now();
+                    await existingRecord.save();
+                    await ctx.reply(`🎊 تبریک! رکورد جدیدی ثبت کردی:\n✅ ${resultText}`);
+                } else {
+                    // اگر امتیاز جدید کمتر یا مساوی بود
+                    await ctx.reply(`خسته نباشی ${ctx.from.first_name}! امتیازت: ${newScore}\nرکورد قبلی تو (${oldScore}) همچنان بهتر است. 💪`);
+                }
+            } else {
+                // اگر اولین بار است که بازی می‌کند، رکورد جدید بساز
+                const newRecord = new UserResult({
+                    userId: userId,
+                    firstName: ctx.from.first_name,
+                    scoreResult: resultText
+                });
+                await newRecord.save();
+                await ctx.reply(`✅ اولین امتیاز تو ثبت شد: ${resultText}`);
+            }
         }
     } catch (e) {
         console.error("Save Error:", e);
+        ctx.reply("❌ خطا در ثبت امتیاز.");
     }
 });
 
@@ -159,3 +183,4 @@ bot.telegram.deleteWebhook().then(() => {
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
